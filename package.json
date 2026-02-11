@@ -1,0 +1,22 @@
+{
+  "name": "rcdt",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "packages/core",
+    "packages/cli",
+    "packages/web"
+  ],
+  "scripts": {
+    "build:core": "bun run --filter @rcdt/core build",
+    "build:cli": "bun run --filter @rcdt/cli build",
+    "build:web": "bun run --filter @rcdt/web build",
+    "build:frontend": "cd packages/frontend && npx ng build",
+    "dev:web": "bun run --filter @rcdt/web dev",
+    "dev:frontend": "cd packages/frontend && npx ng serve",
+    "cli": "bun run packages/cli/src/index.ts"
+  },
+  "devDependencies": {
+    "bun-types": "^1.3.9"
+  }
+}

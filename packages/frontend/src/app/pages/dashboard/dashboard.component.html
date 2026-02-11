@@ -1,0 +1,268 @@
+<div class="dashboard">
+  <!-- Error Banner -->
+  @if (error()) {
+    <div class="error-banner">
+      <span>{{ error() }}</span>
+      <button (click)="error.set('')">x</button>
+    </div>
+  }
+
+  <!-- Connection Panel -->
+  <section class="panel connection-panel">
+    <h2 class="panel-title">Connection</h2>
+    <div class="connection-form">
+      <div class="form-row">
+        <label>Host</label>
+        <input type="text" [ngModel]="host()" (ngModelChange)="host.set($event)" placeholder="127.0.0.1" />
+      </div>
+      <div class="form-row">
+        <label>Port</label>
+        <input type="number" [ngModel]="port()" (ngModelChange)="port.set($event)" placeholder="9222" />
+      </div>
+      <div class="form-row checkbox-row">
+        <label>
+          <input type="checkbox" [ngModel]="useSshTunnel()" (ngModelChange)="useSshTunnel.set($event)" />
+          SSH Tunnel
+        </label>
+      </div>
+    </div>
+
+    @if (useSshTunnel()) {
+      <div class="ssh-config">
+        <h3>SSH Tunnel Configuration</h3>
+        <div class="form-grid">
+          <div class="form-row">
+            <label>SSH Host</label>
+            <input type="text" [ngModel]="sshHost()" (ngModelChange)="sshHost.set($event)" placeholder="remote-server.com" />
+          </div>
+          <div class="form-row">
+            <label>SSH Port</label>
+            <input type="number" [ngModel]="sshPort()" (ngModelChange)="sshPort.set($event)" />
+          </div>
+          <div class="form-row">
+            <label>SSH User</label>
+            <input type="text" [ngModel]="sshUser()" (ngModelChange)="sshUser.set($event)" placeholder="root" />
+          </div>
+          <div class="form-row">
+            <label>Key Path</label>
+            <input type="text" [ngModel]="sshKeyPath()" (ngModelChange)="sshKeyPath.set($event)" placeholder="~/.ssh/id_rsa" />
+          </div>
+          <div class="form-row">
+            <label>Remote Host</label>
+            <input type="text" [ngModel]="remoteHost()" (ngModelChange)="remoteHost.set($event)" />
+          </div>
+          <div class="form-row">
+            <label>Remote Port</label>
+            <input type="number" [ngModel]="remotePort()" (ngModelChange)="remotePort.set($event)" />
+          </div>
+          <div class="form-row">
+            <label>Local Port</label>
+            <input type="number" [ngModel]="localPort()" (ngModelChange)="localPort.set($event)" />
+          </div>
+        </div>
+      </div>
+    }
+
+    <div class="button-group">
+      <button class="btn btn-primary" (click)="listTabs()" [disabled]="loading()">List Tabs</button>
+      <button class="btn btn-primary" (click)="connect()" [disabled]="loading()">Connect</button>
+      @if (session()) {
+        <button class="btn btn-danger" (click)="disconnect()" [disabled]="loading()">Disconnect</button>
+      }
+    </div>
+
+    @if (session(); as s) {
+      <div class="session-info">
+        <span class="status-badge" [class]="'status-' + s.status">{{ s.status }}</span>
+        <span>Session: {{ s.id }}</span>
+      </div>
+    }
+  </section>
+
+  <!-- Tabs List -->
+  @if (tabs().length > 0) {
+    <section class="panel">
+      <h2 class="panel-title">Browser Tabs</h2>
+      <div class="tabs-list">
+        @for (tab of tabs(); track tab.id) {
+          <div class="tab-item">
+            <div class="tab-info">
+              <span class="tab-title">{{ tab.title }}</span>
+              <span class="tab-url">{{ tab.url }}</span>
+              <span class="tab-meta">{{ tab.type }} | {{ tab.id }}</span>
+            </div>
+            <button class="btn btn-sm" (click)="connect(tab.id)" [disabled]="loading()">Connect</button>
+          </div>
+        }
+      </div>
+    </section>
+  }
+
+  <!-- Tools Tabs (only when connected) -->
+  @if (session()?.status === 'connected') {
+    <section class="panel tools-panel">
+      <div class="tool-tabs">
+        <button class="tool-tab" [class.active]="activeTab() === 'navigate'" (click)="activeTab.set('navigate')">Navigate</button>
+        <button class="tool-tab" [class.active]="activeTab() === 'script'" (click)="activeTab.set('script')">JavaScript</button>
+        <button class="tool-tab" [class.active]="activeTab() === 'performance'" (click)="activeTab.set('performance')">Performance</button>
+        <button class="tool-tab" [class.active]="activeTab() === 'devtools'" (click)="activeTab.set('devtools')">DevTools</button>
+        <button class="tool-tab" [class.active]="activeTab() === 'screenshot'" (click)="activeTab.set('screenshot')">Screenshot</button>
+      </div>
+
+      <div class="tool-content">
+        <!-- Navigate -->
+        @if (activeTab() === 'navigate') {
+          <div class="tool-section">
+            <h3>URL Navigation</h3>
+            <div class="input-action">
+              <input type="text" [ngModel]="navUrl()" (ngModelChange)="navUrl.set($event)"
+                placeholder="https://example.com" (keyup.enter)="navigate()" />
+              <button class="btn btn-primary" (click)="navigate()" [disabled]="loading()">Go</button>
+            </div>
+          </div>
+        }
+
+        <!-- Script Execution -->
+        @if (activeTab() === 'script') {
+          <div class="tool-section">
+            <h3>JavaScript Execution</h3>
+            <textarea [ngModel]="scriptExpression()" (ngModelChange)="scriptExpression.set($event)"
+              placeholder="document.title" rows="4"></textarea>
+            <button class="btn btn-primary" (click)="evalScript()" [disabled]="loading()">Execute</button>
+            @if (scriptResult(); as r) {
+              <div class="result-box" [class.error]="r.isError">
+                <div class="result-header">
+                  <span>Type: {{ r.type }}</span>
+                  @if (r.isError) { <span class="badge-error">Error</span> }
+                </div>
+                <pre>{{ r.isError ? r.error : formatJson(r.value) }}</pre>
+              </div>
+            }
+          </div>
+        }
+
+        <!-- Performance -->
+        @if (activeTab() === 'performance') {
+          <div class="tool-section">
+            <h3>Performance Measurement</h3>
+            <div class="button-group">
+              <button class="btn btn-primary" (click)="measurePerformance()" [disabled]="loading()">Measure</button>
+            </div>
+
+            <div class="export-row">
+              <select [ngModel]="exportFormat()" (ngModelChange)="exportFormat.set($event)">
+                <option value="json">JSON</option>
+                <option value="csv">CSV</option>
+                <option value="html">HTML</option>
+              </select>
+              <input type="text" [ngModel]="exportPath()" (ngModelChange)="exportPath.set($event)"
+                placeholder="Output path" />
+              <button class="btn btn-secondary" (click)="exportPerformance()" [disabled]="loading()">Export</button>
+            </div>
+
+            @if (perfMetrics(); as m) {
+              <div class="metrics-grid">
+                <div class="metric-card">
+                  <div class="metric-value">{{ formatBytes(m.memory.jsHeapUsedSize) }}</div>
+                  <div class="metric-label">JS Heap Used</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-value">{{ formatBytes(m.memory.jsHeapTotalSize) }}</div>
+                  <div class="metric-label">JS Heap Total</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-value">{{ m.dom.nodeCount }}</div>
+                  <div class="metric-label">DOM Nodes</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-value">{{ formatMs(m.durations.layout) }}</div>
+                  <div class="metric-label">Layout Duration</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-value">{{ formatMs(m.durations.script) }}</div>
+                  <div class="metric-label">Script Duration</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-value">{{ m.resources.length }}</div>
+                  <div class="metric-label">Resources</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-value">{{ formatBytes(m.summary.totalResourceSize) }}</div>
+                  <div class="metric-label">Total Transfer</div>
+                </div>
+              </div>
+
+              @if (m.resources.length > 0) {
+                <h4>Resources</h4>
+                <div class="table-container">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>URL</th>
+                        <th>Type</th>
+                        <th>Size</th>
+                        <th>Duration</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (r of m.resources; track r.url) {
+                        <tr>
+                          <td class="url-cell">{{ r.url }}</td>
+                          <td>{{ r.type }}</td>
+                          <td>{{ formatBytes(r.size) }}</td>
+                          <td>{{ r.duration.toFixed(1) }} ms</td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              }
+            }
+          </div>
+        }
+
+        <!-- DevTools -->
+        @if (activeTab() === 'devtools') {
+          <div class="tool-section">
+            <h3>DevTools Protocol Command</h3>
+            <div class="form-row">
+              <label>Method</label>
+              <input type="text" [ngModel]="devtoolsMethod()" (ngModelChange)="devtoolsMethod.set($event)"
+                placeholder="Page.getNavigationHistory" />
+            </div>
+            <div class="form-row">
+              <label>Params (JSON)</label>
+              <textarea [ngModel]="devtoolsParams()" (ngModelChange)="devtoolsParams.set($event)"
+                rows="3" placeholder="{}"></textarea>
+            </div>
+            <button class="btn btn-primary" (click)="sendDevToolsCommand()" [disabled]="loading()">Send</button>
+            @if (devtoolsResult(); as r) {
+              <div class="result-box">
+                <pre>{{ formatJson(r) }}</pre>
+              </div>
+            }
+          </div>
+        }
+
+        <!-- Screenshot -->
+        @if (activeTab() === 'screenshot') {
+          <div class="tool-section">
+            <h3>Screenshot</h3>
+            <button class="btn btn-primary" (click)="captureScreenshot()" [disabled]="loading()">Capture</button>
+            @if (screenshotUrl()) {
+              <div class="screenshot-container">
+                <img [src]="screenshotUrl()" alt="Screenshot" />
+              </div>
+            }
+          </div>
+        }
+      </div>
+    </section>
+  }
+
+  @if (loading()) {
+    <div class="loading-overlay">
+      <div class="spinner"></div>
+    </div>
+  }
+</div>
