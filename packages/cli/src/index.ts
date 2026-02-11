@@ -8,6 +8,8 @@ import {
   type ExecuteScriptUseCase,
   type MeasurePerformanceUseCase,
   type DevToolsCommandUseCase,
+  type ConsoleCaptureUseCase,
+  type PerformanceMonitorUseCase,
   type ExportFormat,
 } from "@rcdt/core";
 import type { SshTunnelConfig } from "@rcdt/core";
@@ -19,6 +21,8 @@ const navigateUC = container.resolve<NavigateUseCase>(TOKENS.NavigateUseCase);
 const executeScriptUC = container.resolve<ExecuteScriptUseCase>(TOKENS.ExecuteScriptUseCase);
 const measureUC = container.resolve<MeasurePerformanceUseCase>(TOKENS.MeasurePerformanceUseCase);
 const devtoolsUC = container.resolve<DevToolsCommandUseCase>(TOKENS.DevToolsCommandUseCase);
+const consoleUC = container.resolve<ConsoleCaptureUseCase>(TOKENS.ConsoleCaptureUseCase);
+const perfMonitorUC = container.resolve<PerformanceMonitorUseCase>(TOKENS.PerformanceMonitorUseCase);
 
 function printHelp(): void {
   console.log(`
@@ -35,6 +39,8 @@ Commands:
   perf [--format json|csv|html] [--output <path>]  Measure performance
   screenshot [--output <path>]  Capture screenshot
   content [--output <path>]     Get page HTML content
+  console                       Capture console logs (Ctrl+C to stop)
+  perf-monitor [--interval ms] [--duration sec]  Performance monitor
   devtools <method> [params]    Send raw DevTools command
   interactive                   Interactive REPL mode
 
@@ -122,6 +128,14 @@ async function runInteractive(config: ConnectionConfig): Promise<void> {
           console.log("  perf          - Measure performance");
           console.log("  screenshot    - Capture screenshot");
           console.log("  tabs          - List tabs");
+          console.log("  console start - Start console capture");
+          console.log("  console stop  - Stop and show console logs");
+          console.log("  console show  - Show captured logs");
+          console.log("  console clear - Clear logs");
+          console.log("  monitor start - Start perf monitor");
+          console.log("  monitor stop  - Stop and show snapshot");
+          console.log("  monitor show  - Show current snapshot");
+          console.log("  workflow <url> [format] - Record perf, navigate, stop, export");
           console.log("  devtools <m>  - Send DevTools command");
           console.log("  exit          - Disconnect and exit");
           break;
@@ -170,6 +184,80 @@ async function runInteractive(config: ConnectionConfig): Promise<void> {
         case "tabs": {
           const tabs = await sessionUC.listTabs(config);
           tabs.forEach((t, i) => console.log(`  [${i}] ${t.title} - ${t.url}`));
+          break;
+        }
+
+        case "console": {
+          const sub = parts[1];
+          if (sub === "start") {
+            await consoleUC.start((entry) => {
+              const color = entry.level === "error" ? "\x1b[31m" : entry.level === "warn" ? "\x1b[33m" : "\x1b[0m";
+              console.log(`${color}[${entry.level}] ${entry.text}\x1b[0m`);
+            });
+            console.log("Console capture started. Use 'console stop' to stop.");
+          } else if (sub === "stop") {
+            const logs = await consoleUC.stop();
+            console.log(`Captured ${logs.length} log(s).`);
+            logs.forEach((l) => console.log(`  [${l.level}] ${l.text}`));
+          } else if (sub === "show") {
+            const logs = consoleUC.getLogs();
+            console.log(`${logs.length} log(s):`);
+            logs.forEach((l) => console.log(`  [${l.level}] ${l.text}`));
+          } else if (sub === "clear") {
+            consoleUC.clear();
+            console.log("Console logs cleared.");
+          } else {
+            console.log("Usage: console start|stop|show|clear");
+          }
+          break;
+        }
+
+        case "monitor": {
+          const sub = parts[1];
+          if (sub === "start") {
+            const interval = parts[2] ? parseInt(parts[2], 10) : 1000;
+            await perfMonitorUC.start(interval);
+            console.log(`Performance monitor started (interval: ${interval}ms). Use 'monitor stop' to stop.`);
+          } else if (sub === "stop") {
+            const snapshot = await perfMonitorUC.stop();
+            console.log(JSON.stringify(snapshot.toJSON(), null, 2));
+          } else if (sub === "show") {
+            const snapshot = perfMonitorUC.getSnapshot();
+            if (snapshot) {
+              console.log(JSON.stringify(snapshot.toJSON(), null, 2));
+            } else {
+              console.log("No monitoring data available.");
+            }
+          } else {
+            console.log("Usage: monitor start [intervalMs]|stop|show");
+          }
+          break;
+        }
+
+        case "workflow": {
+          const url = parts[1];
+          const format = (parts[2] || "html") as "json" | "csv" | "html";
+          if (!url) {
+            console.log("Usage: workflow <url> [json|csv|html]");
+            break;
+          }
+          console.log("1. Starting performance monitor...");
+          await perfMonitorUC.start(500);
+          console.log(`2. Navigating to: ${url}`);
+          await navigateUC.execute(url);
+          console.log("3. Collecting performance metrics...");
+          await new Promise((r) => setTimeout(r, 2000));
+          const snapshot = await perfMonitorUC.stop();
+          const metrics = await measureUC.measure();
+          const outPath = `./perf-report-${Date.now()}.${format}`;
+          const { filePath } = await measureUC.measureAndExport(format, outPath);
+          console.log(`4. Performance report exported: ${filePath}`);
+          console.log(`   Monitor samples: ${snapshot.samples.length}`);
+          console.log(`   JS Heap: ${(metrics.jsHeapUsedSize / 1048576).toFixed(2)} MB`);
+          console.log(`   DOM Nodes: ${metrics.domNodes}`);
+          if (format === "html") {
+            console.log(`5. Open in Chrome: file://${filePath}`);
+          }
           break;
         }
 
@@ -331,6 +419,97 @@ async function main(): Promise<void> {
         await sessionUC.connect(config);
         const res = await devtoolsUC.sendCommand(method, params);
         console.log(JSON.stringify(res, null, 2));
+        await sessionUC.disconnect();
+        break;
+      }
+
+      case "console": {
+        await sessionUC.connect(config);
+        console.log("Console capture started. Press Ctrl+C to stop...\n");
+        await consoleUC.start((entry) => {
+          const color = entry.level === "error" ? "\x1b[31m" : entry.level === "warn" ? "\x1b[33m" : "\x1b[0m";
+          process.stdout.write(`${color}[${entry.level}] ${entry.text}\x1b[0m\n`);
+        });
+
+        await new Promise<void>((resolve) => {
+          process.on("SIGINT", async () => {
+            const logs = await consoleUC.stop();
+            console.log(`\nCapture stopped. Total: ${logs.length} log(s).`);
+            const output = opts["output"];
+            if (output) {
+              await Bun.write(output, JSON.stringify(logs.map((l) => l.toJSON()), null, 2));
+              console.log(`Logs saved to: ${output}`);
+            }
+            await sessionUC.disconnect();
+            resolve();
+          });
+        });
+        break;
+      }
+
+      case "perf-monitor": {
+        const interval = parseInt(opts["interval"] || "1000", 10);
+        const duration = parseInt(opts["duration"] || "10", 10);
+        const output = opts["output"];
+
+        await sessionUC.connect(config);
+        console.log(`Performance monitor started (interval: ${interval}ms, duration: ${duration}s)...\n`);
+        await perfMonitorUC.start(interval);
+
+        await new Promise((r) => setTimeout(r, duration * 1000));
+        const snapshot = await perfMonitorUC.stop();
+
+        if (output) {
+          await Bun.write(output, JSON.stringify(snapshot.toJSON(), null, 2));
+          console.log(`Monitor data saved to: ${output}`);
+        } else {
+          console.log(JSON.stringify(snapshot.toJSON(), null, 2));
+        }
+        console.log(`\nSamples: ${snapshot.samples.length}`);
+        await sessionUC.disconnect();
+        break;
+      }
+
+      case "workflow": {
+        const url = opts["_1"];
+        const format = (opts["format"] || "html") as ExportFormat;
+        const output = opts["output"] || `./perf-report-${Date.now()}.${format}`;
+        const wait = parseInt(opts["wait"] || "2", 10);
+
+        if (!url) {
+          console.error("Error: URL is required. Usage: rcdt workflow <url> [--format html|json|csv] [--output path] [--wait seconds]");
+          process.exit(1);
+        }
+
+        await sessionUC.connect(config);
+
+        console.log("1. Starting performance monitor...");
+        await perfMonitorUC.start(500);
+        await consoleUC.start();
+
+        console.log(`2. Navigating to: ${url}`);
+        await navigateUC.execute(url);
+
+        console.log(`3. Waiting ${wait}s for page to stabilize...`);
+        await new Promise((r) => setTimeout(r, wait * 1000));
+
+        console.log("4. Stopping monitor and collecting metrics...");
+        const snapshot = await perfMonitorUC.stop();
+        const consoleLogs = await consoleUC.stop();
+        const { metrics, filePath } = await measureUC.measureAndExport(format, output);
+
+        console.log(`5. Report exported: ${filePath}`);
+        console.log(`\nResults:`);
+        console.log(`  Monitor samples: ${snapshot.samples.length}`);
+        console.log(`  JS Heap: ${(metrics.jsHeapUsedSize / 1048576).toFixed(2)} MB`);
+        console.log(`  DOM Nodes: ${metrics.domNodes}`);
+        console.log(`  Resources: ${metrics.resources.length}`);
+        console.log(`  Console logs: ${consoleLogs.length}`);
+
+        if (format === "html") {
+          console.log(`\n  Open report: file://${filePath}`);
+        }
+
         await sessionUC.disconnect();
         break;
       }

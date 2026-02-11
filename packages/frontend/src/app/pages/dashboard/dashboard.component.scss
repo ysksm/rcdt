@@ -470,6 +470,111 @@ table {
   }
 }
 
+// Console Logs
+.console-log-container {
+  margin-top: 12px;
+  background: #0a0a15;
+  border: 1px solid #222;
+  border-radius: 6px;
+  max-height: 400px;
+  overflow-y: auto;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+
+  &.compact { max-height: 200px; }
+}
+
+.console-log-entry {
+  padding: 4px 12px;
+  border-bottom: 1px solid #1a1a2e;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.log-level {
+  font-weight: 600;
+  min-width: 55px;
+}
+
+.log-text {
+  flex: 1;
+  word-break: break-all;
+}
+
+.log-source {
+  font-size: 10px;
+  color: #555;
+  white-space: nowrap;
+}
+
+.log-error { color: #ff5555; background: rgba(255, 50, 50, 0.05); }
+.log-warn { color: #ffaa33; background: rgba(255, 170, 50, 0.05); }
+.log-info { color: #55aaff; }
+.log-debug { color: #888; }
+.log-default { color: #ccc; }
+
+.capture-indicator {
+  margin-top: 8px;
+  padding: 6px 12px;
+  background: #1a3a1a;
+  color: #44cc66;
+  border-radius: 4px;
+  font-size: 12px;
+  display: inline-block;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.empty-state {
+  padding: 24px;
+  text-align: center;
+  color: #555;
+  font-size: 13px;
+}
+
+// Workflow
+.workflow-description {
+  margin: 0 0 12px 0;
+  color: #888;
+  font-size: 13px;
+}
+
+.workflow-result {
+  margin-top: 16px;
+
+  h4 {
+    margin: 16px 0 8px 0;
+    font-size: 13px;
+    color: #aaa;
+  }
+}
+
+.workflow-steps {
+  margin: 0;
+  padding: 0 0 0 20px;
+  font-size: 13px;
+  color: #aaa;
+
+  li {
+    margin: 4px 0;
+    &::marker { color: #44cc66; }
+  }
+}
+
+.export-badge {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #1a2a3a;
+  color: #55aaff;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
 // Loading
 .loading-overlay {
   position: fixed;

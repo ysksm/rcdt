@@ -9,9 +9,13 @@ export type { SshTunnelConfig } from "./domain/value-objects/connection-config.j
 export { PerformanceMetrics } from "./domain/value-objects/performance-metrics.js";
 export type { TimingMetric, ResourceMetric } from "./domain/value-objects/performance-metrics.js";
 export { ScriptResult } from "./domain/value-objects/script-result.js";
+export { ConsoleEntry } from "./domain/value-objects/console-entry.js";
+export type { ConsoleLogLevel } from "./domain/value-objects/console-entry.js";
+export { PerformanceMonitorSnapshot } from "./domain/value-objects/performance-monitor-snapshot.js";
+export type { PerformanceSample } from "./domain/value-objects/performance-monitor-snapshot.js";
 
 // Domain - Repository Interfaces (DIP)
-export type { IBrowserConnectionRepository } from "./domain/repositories/browser-connection-repository.js";
+export type { IBrowserConnectionRepository, ConsoleEventCallback } from "./domain/repositories/browser-connection-repository.js";
 export type { ISshTunnelRepository } from "./domain/repositories/ssh-tunnel-repository.js";
 export type { IMetricsExportRepository, ExportFormat } from "./domain/repositories/metrics-export-repository.js";
 
@@ -21,6 +25,8 @@ export { NavigateUseCase } from "./application/use-cases/navigate-use-case.js";
 export { ExecuteScriptUseCase } from "./application/use-cases/execute-script-use-case.js";
 export { MeasurePerformanceUseCase } from "./application/use-cases/measure-performance-use-case.js";
 export { DevToolsCommandUseCase } from "./application/use-cases/devtools-command-use-case.js";
+export { ConsoleCaptureUseCase } from "./application/use-cases/console-capture-use-case.js";
+export { PerformanceMonitorUseCase } from "./application/use-cases/performance-monitor-use-case.js";
 
 // DI
 export { DIContainer, TOKENS } from "./di/container.js";

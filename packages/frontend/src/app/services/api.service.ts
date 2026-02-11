@@ -61,6 +61,49 @@ export interface DevToolsCommandResult {
   result: unknown;
 }
 
+export interface ConsoleLogEntry {
+  timestamp: string;
+  level: string;
+  text: string;
+  source: string;
+  url: string;
+  lineNumber: number;
+  stackTrace?: string;
+}
+
+export interface PerfMonitorSnapshot {
+  capturedAt: string;
+  duration: number;
+  interval: number;
+  sampleCount: number;
+  samples: { timestamp: number; metrics: Record<string, number> }[];
+  summary: {
+    avgCpu: number;
+    maxCpu: number;
+    avgJsHeap: number;
+    maxJsHeap: number;
+    avgDomNodes: number;
+    maxDomNodes: number;
+  };
+}
+
+export interface WorkflowRequest {
+  url?: string;
+  script?: string;
+  format?: string;
+  outputPath?: string;
+  waitMs?: number;
+  monitorIntervalMs?: number;
+}
+
+export interface WorkflowResult {
+  steps: string[];
+  performance: PerformanceMetricsResponse;
+  monitor: PerfMonitorSnapshot;
+  consoleLogs: ConsoleLogEntry[];
+  exportedPath?: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class ApiService {
   private baseUrl = '/api';
@@ -122,5 +165,40 @@ export class ApiService {
 
   getScreenshotUrl(format: string = 'png'): string {
     return `${this.baseUrl}/devtools/screenshot?format=${format}`;
+  }
+
+  // Console
+  startConsoleCapture(): Observable<{ status: string }> {
+    return this.http.post<{ status: string }>(`${this.baseUrl}/console/start`, {});
+  }
+
+  stopConsoleCapture(): Observable<ConsoleLogEntry[]> {
+    return this.http.post<ConsoleLogEntry[]>(`${this.baseUrl}/console/stop`, {});
+  }
+
+  getConsoleLogs(): Observable<ConsoleLogEntry[]> {
+    return this.http.get<ConsoleLogEntry[]>(`${this.baseUrl}/console/logs`);
+  }
+
+  clearConsoleLogs(): Observable<{ status: string }> {
+    return this.http.post<{ status: string }>(`${this.baseUrl}/console/clear`, {});
+  }
+
+  // Performance Monitor
+  startPerfMonitor(intervalMs: number = 1000): Observable<{ status: string }> {
+    return this.http.post<{ status: string }>(`${this.baseUrl}/perf-monitor/start`, { intervalMs });
+  }
+
+  stopPerfMonitor(): Observable<PerfMonitorSnapshot> {
+    return this.http.post<PerfMonitorSnapshot>(`${this.baseUrl}/perf-monitor/stop`, {});
+  }
+
+  getPerfMonitorSnapshot(): Observable<PerfMonitorSnapshot> {
+    return this.http.get<PerfMonitorSnapshot>(`${this.baseUrl}/perf-monitor/snapshot`);
+  }
+
+  // Workflow
+  runWorkflow(req: WorkflowRequest): Observable<WorkflowResult> {
+    return this.http.post<WorkflowResult>(`${this.baseUrl}/workflow/run`, req);
   }
 }

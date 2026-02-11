@@ -8,6 +8,9 @@ import {
   type ScriptResult,
   type PerformanceMetricsResponse,
   type SshTunnelConfig,
+  type ConsoleLogEntry,
+  type PerfMonitorSnapshot,
+  type WorkflowResult,
 } from '../../services/api.service';
 
 @Component({
@@ -51,12 +54,30 @@ export class DashboardComponent {
   devtoolsParams = signal('{}');
   devtoolsResult = signal<unknown>(null);
 
+  // Console
+  consoleLogs = signal<ConsoleLogEntry[]>([]);
+  consoleCapturing = signal(false);
+
+  // Perf Monitor
+  perfMonitorData = signal<PerfMonitorSnapshot | null>(null);
+  perfMonitoring = signal(false);
+  perfMonitorInterval = signal(1000);
+  perfPollTimer: ReturnType<typeof setInterval> | null = null;
+
+  // Workflow
+  workflowUrl = signal('');
+  workflowScript = signal('');
+  workflowFormat = signal('html');
+  workflowOutputPath = signal('./perf-report');
+  workflowWaitMs = signal(2000);
+  workflowResult = signal<WorkflowResult | null>(null);
+
   // UI state
   loading = signal(false);
   error = signal('');
-  activeTab = signal<'navigate' | 'script' | 'performance' | 'devtools' | 'screenshot'>(
-    'navigate',
-  );
+  activeTab = signal<
+    'navigate' | 'script' | 'performance' | 'devtools' | 'screenshot' | 'console' | 'monitor' | 'workflow'
+  >('navigate');
   screenshotUrl = signal('');
 
   constructor(private api: ApiService) {}
@@ -230,5 +251,87 @@ export class DashboardComponent {
 
   formatJson(value: unknown): string {
     return JSON.stringify(value, null, 2);
+  }
+
+  // Console
+  startConsoleCapture(): void {
+    this.api.startConsoleCapture().subscribe({
+      next: () => { this.consoleCapturing.set(true); this.consoleLogs.set([]); },
+      error: (err) => this.error.set(err.error?.error || err.message),
+    });
+  }
+
+  stopConsoleCapture(): void {
+    this.api.stopConsoleCapture().subscribe({
+      next: (logs) => { this.consoleLogs.set(logs); this.consoleCapturing.set(false); },
+      error: (err) => this.error.set(err.error?.error || err.message),
+    });
+  }
+
+  refreshConsoleLogs(): void {
+    this.api.getConsoleLogs().subscribe({
+      next: (logs) => this.consoleLogs.set(logs),
+      error: (err) => this.error.set(err.error?.error || err.message),
+    });
+  }
+
+  clearConsoleLogs(): void {
+    this.api.clearConsoleLogs().subscribe({
+      next: () => this.consoleLogs.set([]),
+      error: (err) => this.error.set(err.error?.error || err.message),
+    });
+  }
+
+  // Performance Monitor
+  startPerfMonitor(): void {
+    this.api.startPerfMonitor(this.perfMonitorInterval()).subscribe({
+      next: () => {
+        this.perfMonitoring.set(true);
+        this.perfMonitorData.set(null);
+        this.perfPollTimer = setInterval(() => {
+          this.api.getPerfMonitorSnapshot().subscribe({
+            next: (s) => { if (s && 'sampleCount' in s) this.perfMonitorData.set(s); },
+          });
+        }, this.perfMonitorInterval());
+      },
+      error: (err) => this.error.set(err.error?.error || err.message),
+    });
+  }
+
+  stopPerfMonitor(): void {
+    if (this.perfPollTimer) { clearInterval(this.perfPollTimer); this.perfPollTimer = null; }
+    this.api.stopPerfMonitor().subscribe({
+      next: (snapshot) => { this.perfMonitorData.set(snapshot); this.perfMonitoring.set(false); },
+      error: (err) => this.error.set(err.error?.error || err.message),
+    });
+  }
+
+  // Workflow
+  runWorkflow(): void {
+    if (!this.workflowUrl() && !this.workflowScript()) return;
+    this.loading.set(true);
+    this.error.set('');
+    this.workflowResult.set(null);
+    const ext = this.workflowFormat();
+    this.api.runWorkflow({
+      url: this.workflowUrl() || undefined,
+      script: this.workflowScript() || undefined,
+      format: ext,
+      outputPath: this.workflowOutputPath() ? `${this.workflowOutputPath()}.${ext}` : undefined,
+      waitMs: this.workflowWaitMs(),
+    }).subscribe({
+      next: (result) => { this.workflowResult.set(result); this.loading.set(false); },
+      error: (err) => { this.error.set(err.error?.error || err.message); this.loading.set(false); },
+    });
+  }
+
+  getLogLevelClass(level: string): string {
+    switch (level) {
+      case 'error': return 'log-error';
+      case 'warn': return 'log-warn';
+      case 'info': return 'log-info';
+      case 'debug': return 'log-debug';
+      default: return 'log-default';
+    }
   }
 }

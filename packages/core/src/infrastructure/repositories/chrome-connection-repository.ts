@@ -1,12 +1,25 @@
 import CDP from "chrome-remote-interface";
-import type { IBrowserConnectionRepository } from "../../domain/repositories/browser-connection-repository.js";
+import type { IBrowserConnectionRepository, ConsoleEventCallback } from "../../domain/repositories/browser-connection-repository.js";
 import { BrowserTab } from "../../domain/entities/browser-tab.js";
 import { ScriptResult } from "../../domain/value-objects/script-result.js";
 import { PerformanceMetrics } from "../../domain/value-objects/performance-metrics.js";
 import type { TimingMetric, ResourceMetric } from "../../domain/value-objects/performance-metrics.js";
+import { ConsoleEntry, type ConsoleLogLevel } from "../../domain/value-objects/console-entry.js";
+import { PerformanceMonitorSnapshot, type PerformanceSample } from "../../domain/value-objects/performance-monitor-snapshot.js";
 
 export class ChromeConnectionRepository implements IBrowserConnectionRepository {
   private client: CDP.Client | null = null;
+
+  // Console capture state
+  private consoleLogs: ConsoleEntry[] = [];
+  private consoleCapturing = false;
+  private consoleCallback: ConsoleEventCallback | undefined;
+
+  // Performance monitor state
+  private perfMonitorTimer: ReturnType<typeof setInterval> | null = null;
+  private perfMonitorSamples: PerformanceSample[] = [];
+  private perfMonitorStartTime: number = 0;
+  private perfMonitorInterval: number = 1000;
 
   async connect(host: string, port: number, tabId?: string): Promise<void> {
     const options: CDP.Options = { host, port };
@@ -24,6 +37,11 @@ export class ChromeConnectionRepository implements IBrowserConnectionRepository 
   }
 
   async disconnect(): Promise<void> {
+    if (this.perfMonitorTimer) {
+      clearInterval(this.perfMonitorTimer);
+      this.perfMonitorTimer = null;
+    }
+    this.consoleCapturing = false;
     if (this.client) {
       await this.client.close();
       this.client = null;
@@ -72,14 +90,11 @@ export class ChromeConnectionRepository implements IBrowserConnectionRepository 
   async collectPerformanceMetrics(): Promise<PerformanceMetrics> {
     this.ensureConnected();
 
-    // Enable Performance domain
     await this.client!.Performance.enable();
 
-    // Get performance metrics from CDP
     const { metrics: rawMetrics } = await this.client!.Performance.getMetrics();
     const metricsMap = new Map(rawMetrics.map((m: { name: string; value: number }) => [m.name, m.value]));
 
-    // Get navigation timing via JS
     const timingResult = await this.client!.Runtime.evaluate({
       expression: `JSON.stringify(performance.getEntriesByType('navigation').concat(performance.getEntriesByType('resource')))`,
       returnByValue: true,
@@ -113,7 +128,6 @@ export class ChromeConnectionRepository implements IBrowserConnectionRepository 
       }
     }
 
-    // Get current URL
     const urlResult = await this.client!.Runtime.evaluate({
       expression: "location.href",
       returnByValue: true,
@@ -155,6 +169,204 @@ export class ChromeConnectionRepository implements IBrowserConnectionRepository 
   async sendCommand(method: string, params?: Record<string, unknown>): Promise<unknown> {
     this.ensureConnected();
     return this.client!.send(method as any, params || {});
+  }
+
+  // ─── Console Capture ───
+
+  async startConsoleCapture(callback?: ConsoleEventCallback): Promise<void> {
+    this.ensureConnected();
+    this.consoleLogs = [];
+    this.consoleCapturing = true;
+    this.consoleCallback = callback;
+
+    await this.client!.Log.enable();
+
+    const formatStack = (st: CDP.StackTrace): string =>
+      st.callFrames
+        .map((f: CDP.StackTrace["callFrames"][0]) => `  at ${f.functionName || "(anonymous)"} (${f.url}:${f.lineNumber}:${f.columnNumber})`)
+        .join("\n");
+
+    // Runtime.consoleAPICalled - console.log/error/warn/info/debug
+    this.client!.Runtime.consoleAPICalled((params: { type: string; args: CDP.RemoteObject[]; timestamp: number; stackTrace?: CDP.StackTrace }) => {
+      if (!this.consoleCapturing) return;
+
+      const text = params.args
+        .map((arg: CDP.RemoteObject) => {
+          if (arg.value !== undefined) return String(arg.value);
+          if (arg.description) return arg.description;
+          return `[${arg.type}]`;
+        })
+        .join(" ");
+
+      const level = this.mapConsoleType(params.type);
+      const frame = params.stackTrace?.callFrames[0];
+
+      const entry = new ConsoleEntry(
+        new Date(params.timestamp),
+        level,
+        text,
+        "console-api",
+        frame?.url || "",
+        frame?.lineNumber ?? 0,
+        params.stackTrace ? formatStack(params.stackTrace) : undefined,
+      );
+
+      this.consoleLogs.push(entry);
+      this.consoleCallback?.(entry);
+    });
+
+    // Runtime.exceptionThrown - uncaught exceptions
+    this.client!.Runtime.exceptionThrown((params: { timestamp: number; exceptionDetails: { text: string; url?: string; lineNumber?: number; stackTrace?: CDP.StackTrace; exception?: { description?: string } } }) => {
+      if (!this.consoleCapturing) return;
+
+      const details = params.exceptionDetails;
+      const text = details.exception?.description || details.text;
+
+      const entry = new ConsoleEntry(
+        new Date(params.timestamp),
+        "error",
+        text,
+        "exception",
+        details.url || "",
+        details.lineNumber ?? 0,
+        details.stackTrace ? formatStack(details.stackTrace) : undefined,
+      );
+
+      this.consoleLogs.push(entry);
+      this.consoleCallback?.(entry);
+    });
+
+    // Log.entryAdded - browser-level logs (network errors, security, etc.)
+    this.client!.Log.entryAdded((params: { entry: { source: string; level: string; text: string; timestamp: number; url?: string; lineNumber?: number; stackTrace?: CDP.StackTrace } }) => {
+      if (!this.consoleCapturing) return;
+
+      const e = params.entry;
+      const entry = new ConsoleEntry(
+        new Date(e.timestamp),
+        this.mapLogLevel(e.level),
+        e.text,
+        e.source,
+        e.url || "",
+        e.lineNumber ?? 0,
+        e.stackTrace ? formatStack(e.stackTrace) : undefined,
+      );
+
+      this.consoleLogs.push(entry);
+      this.consoleCallback?.(entry);
+    });
+  }
+
+  async stopConsoleCapture(): Promise<ConsoleEntry[]> {
+    this.consoleCapturing = false;
+    this.consoleCallback = undefined;
+    return [...this.consoleLogs];
+  }
+
+  getConsoleLogs(): ConsoleEntry[] {
+    return [...this.consoleLogs];
+  }
+
+  clearConsoleLogs(): void {
+    this.consoleLogs = [];
+  }
+
+  private mapConsoleType(type: string): ConsoleLogLevel {
+    const map: Record<string, ConsoleLogLevel> = {
+      log: "log",
+      info: "info",
+      warning: "warn",
+      error: "error",
+      debug: "debug",
+      trace: "verbose",
+      dir: "log",
+      table: "log",
+      assert: "error",
+    };
+    return map[type] || "log";
+  }
+
+  private mapLogLevel(level: string): ConsoleLogLevel {
+    const map: Record<string, ConsoleLogLevel> = {
+      verbose: "verbose",
+      info: "info",
+      warning: "warn",
+      error: "error",
+    };
+    return map[level] || "log";
+  }
+
+  // ─── Performance Monitor ───
+
+  async startPerformanceMonitor(intervalMs: number = 1000): Promise<void> {
+    this.ensureConnected();
+    await this.client!.Performance.enable();
+
+    this.perfMonitorSamples = [];
+    this.perfMonitorInterval = intervalMs;
+    this.perfMonitorStartTime = Date.now();
+
+    let prevMetricsMap: Map<string, number> | null = null;
+
+    this.perfMonitorTimer = setInterval(async () => {
+      if (!this.client) return;
+
+      try {
+        const { metrics: rawMetrics } = await this.client!.Performance.getMetrics();
+        const currentMap = new Map<string, number>(
+          rawMetrics.map((m: { name: string; value: number }) => [m.name, m.value] as [string, number]),
+        );
+
+        const sample: Record<string, number> = {};
+        for (const [key, value] of currentMap) {
+          sample[key] = value;
+        }
+
+        // Compute per-interval deltas for cumulative counters
+        if (prevMetricsMap) {
+          const taskDelta = (currentMap.get("TaskDuration") ?? 0) - (prevMetricsMap.get("TaskDuration") ?? 0);
+          sample["TaskDuration"] = taskDelta / (intervalMs / 1000);
+          sample["LayoutCount"] = (currentMap.get("LayoutCount") ?? 0) - (prevMetricsMap.get("LayoutCount") ?? 0);
+          sample["RecalcStyleCount"] = (currentMap.get("RecalcStyleCount") ?? 0) - (prevMetricsMap.get("RecalcStyleCount") ?? 0);
+        }
+
+        prevMetricsMap = currentMap;
+
+        this.perfMonitorSamples.push({
+          timestamp: Date.now(),
+          metrics: sample,
+        });
+      } catch {
+        // connection may have closed
+      }
+    }, intervalMs);
+  }
+
+  async stopPerformanceMonitor(): Promise<PerformanceMonitorSnapshot> {
+    if (this.perfMonitorTimer) {
+      clearInterval(this.perfMonitorTimer);
+      this.perfMonitorTimer = null;
+    }
+
+    const snapshot = new PerformanceMonitorSnapshot(
+      new Date(),
+      [...this.perfMonitorSamples],
+      Date.now() - this.perfMonitorStartTime,
+      this.perfMonitorInterval,
+    );
+
+    this.perfMonitorSamples = [];
+    return snapshot;
+  }
+
+  getPerformanceMonitorSnapshot(): PerformanceMonitorSnapshot | null {
+    if (this.perfMonitorSamples.length === 0) return null;
+
+    return new PerformanceMonitorSnapshot(
+      new Date(),
+      [...this.perfMonitorSamples],
+      Date.now() - this.perfMonitorStartTime,
+      this.perfMonitorInterval,
+    );
   }
 
   private ensureConnected(): void {

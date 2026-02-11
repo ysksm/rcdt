@@ -1,6 +1,10 @@
 import type { BrowserTab } from "../entities/browser-tab.js";
 import type { ScriptResult } from "../value-objects/script-result.js";
 import type { PerformanceMetrics } from "../value-objects/performance-metrics.js";
+import type { ConsoleEntry } from "../value-objects/console-entry.js";
+import type { PerformanceMonitorSnapshot } from "../value-objects/performance-monitor-snapshot.js";
+
+export type ConsoleEventCallback = (entry: ConsoleEntry) => void;
 
 /**
  * Repository interface for browser connection operations (DIP).
@@ -18,4 +22,15 @@ export interface IBrowserConnectionRepository {
   captureScreenshot(format?: "png" | "jpeg" | "webp"): Promise<Buffer>;
   enableDomain(domain: string, params?: Record<string, unknown>): Promise<void>;
   sendCommand(method: string, params?: Record<string, unknown>): Promise<unknown>;
+
+  // Console capture
+  startConsoleCapture(callback?: ConsoleEventCallback): Promise<void>;
+  stopConsoleCapture(): Promise<ConsoleEntry[]>;
+  getConsoleLogs(): ConsoleEntry[];
+  clearConsoleLogs(): void;
+
+  // Performance monitor
+  startPerformanceMonitor(intervalMs?: number): Promise<void>;
+  stopPerformanceMonitor(): Promise<PerformanceMonitorSnapshot>;
+  getPerformanceMonitorSnapshot(): PerformanceMonitorSnapshot | null;
 }

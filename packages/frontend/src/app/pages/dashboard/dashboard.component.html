@@ -107,6 +107,9 @@
         <button class="tool-tab" [class.active]="activeTab() === 'performance'" (click)="activeTab.set('performance')">Performance</button>
         <button class="tool-tab" [class.active]="activeTab() === 'devtools'" (click)="activeTab.set('devtools')">DevTools</button>
         <button class="tool-tab" [class.active]="activeTab() === 'screenshot'" (click)="activeTab.set('screenshot')">Screenshot</button>
+        <button class="tool-tab" [class.active]="activeTab() === 'console'" (click)="activeTab.set('console')">Console</button>
+        <button class="tool-tab" [class.active]="activeTab() === 'monitor'" (click)="activeTab.set('monitor')">Monitor</button>
+        <button class="tool-tab" [class.active]="activeTab() === 'workflow'" (click)="activeTab.set('workflow')">Workflow</button>
       </div>
 
       <div class="tool-content">
@@ -252,6 +255,182 @@
             @if (screenshotUrl()) {
               <div class="screenshot-container">
                 <img [src]="screenshotUrl()" alt="Screenshot" />
+              </div>
+            }
+          </div>
+        }
+        <!-- Console -->
+        @if (activeTab() === 'console') {
+          <div class="tool-section">
+            <h3>Console Capture</h3>
+            <div class="button-group">
+              @if (!consoleCapturing()) {
+                <button class="btn btn-primary" (click)="startConsoleCapture()">Start Capture</button>
+              } @else {
+                <button class="btn btn-danger" (click)="stopConsoleCapture()">Stop Capture</button>
+                <button class="btn btn-secondary" (click)="refreshConsoleLogs()">Refresh</button>
+              }
+              <button class="btn btn-secondary" (click)="clearConsoleLogs()">Clear</button>
+            </div>
+            @if (consoleCapturing()) {
+              <div class="capture-indicator">Capturing...</div>
+            }
+            <div class="console-log-container">
+              @for (log of consoleLogs(); track $index) {
+                <div class="console-log-entry" [class]="getLogLevelClass(log.level)">
+                  <span class="log-level">[{{ log.level }}]</span>
+                  <span class="log-text">{{ log.text }}</span>
+                  @if (log.url) {
+                    <span class="log-source">{{ log.url }}:{{ log.lineNumber }}</span>
+                  }
+                </div>
+              }
+              @if (consoleLogs().length === 0) {
+                <div class="empty-state">No console logs captured yet.</div>
+              }
+            </div>
+          </div>
+        }
+
+        <!-- Performance Monitor -->
+        @if (activeTab() === 'monitor') {
+          <div class="tool-section">
+            <h3>Performance Monitor</h3>
+            <div class="form-row">
+              <label>Interval (ms)</label>
+              <input type="number" [ngModel]="perfMonitorInterval()" (ngModelChange)="perfMonitorInterval.set($event)" />
+            </div>
+            <div class="button-group">
+              @if (!perfMonitoring()) {
+                <button class="btn btn-primary" (click)="startPerfMonitor()">Start Monitor</button>
+              } @else {
+                <button class="btn btn-danger" (click)="stopPerfMonitor()">Stop Monitor</button>
+              }
+            </div>
+            @if (perfMonitoring()) {
+              <div class="capture-indicator">Monitoring...</div>
+            }
+            @if (perfMonitorData(); as d) {
+              <div class="metrics-grid">
+                <div class="metric-card">
+                  <div class="metric-value">{{ d.sampleCount }}</div>
+                  <div class="metric-label">Samples</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-value">{{ (d.duration / 1000).toFixed(1) }}s</div>
+                  <div class="metric-label">Duration</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-value">{{ (d.summary.avgCpu * 100).toFixed(1) }}%</div>
+                  <div class="metric-label">Avg CPU</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-value">{{ (d.summary.maxCpu * 100).toFixed(1) }}%</div>
+                  <div class="metric-label">Max CPU</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-value">{{ formatBytes(d.summary.avgJsHeap) }}</div>
+                  <div class="metric-label">Avg JS Heap</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-value">{{ formatBytes(d.summary.maxJsHeap) }}</div>
+                  <div class="metric-label">Max JS Heap</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-value">{{ d.summary.avgDomNodes.toFixed(0) }}</div>
+                  <div class="metric-label">Avg DOM Nodes</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-value">{{ d.summary.maxDomNodes.toFixed(0) }}</div>
+                  <div class="metric-label">Max DOM Nodes</div>
+                </div>
+              </div>
+            }
+          </div>
+        }
+
+        <!-- Workflow -->
+        @if (activeTab() === 'workflow') {
+          <div class="tool-section">
+            <h3>Performance Workflow</h3>
+            <p class="workflow-description">Record perf, navigate/execute, stop recording, export report.</p>
+            <div class="form-row">
+              <label>URL</label>
+              <input type="text" [ngModel]="workflowUrl()" (ngModelChange)="workflowUrl.set($event)"
+                placeholder="https://example.com" />
+            </div>
+            <div class="form-row">
+              <label>Script (optional, executed after navigation)</label>
+              <textarea [ngModel]="workflowScript()" (ngModelChange)="workflowScript.set($event)"
+                rows="2" placeholder="document.title"></textarea>
+            </div>
+            <div class="form-grid">
+              <div class="form-row">
+                <label>Format</label>
+                <select [ngModel]="workflowFormat()" (ngModelChange)="workflowFormat.set($event)">
+                  <option value="html">HTML</option>
+                  <option value="json">JSON</option>
+                  <option value="csv">CSV</option>
+                </select>
+              </div>
+              <div class="form-row">
+                <label>Output Path</label>
+                <input type="text" [ngModel]="workflowOutputPath()" (ngModelChange)="workflowOutputPath.set($event)" />
+              </div>
+              <div class="form-row">
+                <label>Wait (ms)</label>
+                <input type="number" [ngModel]="workflowWaitMs()" (ngModelChange)="workflowWaitMs.set($event)" />
+              </div>
+            </div>
+            <button class="btn btn-primary" (click)="runWorkflow()" [disabled]="loading()">Run Workflow</button>
+
+            @if (workflowResult(); as w) {
+              <div class="workflow-result">
+                <h4>Steps</h4>
+                <ul class="workflow-steps">
+                  @for (step of w.steps; track $index) {
+                    <li>{{ step }}</li>
+                  }
+                </ul>
+
+                @if (w.exportedPath) {
+                  <div class="export-badge">Report exported: {{ w.exportedPath }}</div>
+                }
+
+                <div class="metrics-grid">
+                  <div class="metric-card">
+                    <div class="metric-value">{{ formatBytes(w.performance.memory.jsHeapUsedSize) }}</div>
+                    <div class="metric-label">JS Heap</div>
+                  </div>
+                  <div class="metric-card">
+                    <div class="metric-value">{{ w.performance.dom.nodeCount }}</div>
+                    <div class="metric-label">DOM Nodes</div>
+                  </div>
+                  <div class="metric-card">
+                    <div class="metric-value">{{ w.performance.resources.length }}</div>
+                    <div class="metric-label">Resources</div>
+                  </div>
+                  <div class="metric-card">
+                    <div class="metric-value">{{ w.monitor.sampleCount }}</div>
+                    <div class="metric-label">Monitor Samples</div>
+                  </div>
+                  <div class="metric-card">
+                    <div class="metric-value">{{ w.consoleLogs.length }}</div>
+                    <div class="metric-label">Console Logs</div>
+                  </div>
+                </div>
+
+                @if (w.consoleLogs.length > 0) {
+                  <h4>Console Logs</h4>
+                  <div class="console-log-container compact">
+                    @for (log of w.consoleLogs; track $index) {
+                      <div class="console-log-entry" [class]="getLogLevelClass(log.level)">
+                        <span class="log-level">[{{ log.level }}]</span>
+                        <span class="log-text">{{ log.text }}</span>
+                      </div>
+                    }
+                  </div>
+                }
               </div>
             }
           </div>

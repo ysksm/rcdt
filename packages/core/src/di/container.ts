@@ -32,4 +32,6 @@ export const TOKENS = {
   MeasurePerformanceUseCase: Symbol("MeasurePerformanceUseCase"),
   DevToolsCommandUseCase: Symbol("DevToolsCommandUseCase"),
   SessionManagementUseCase: Symbol("SessionManagementUseCase"),
+  ConsoleCaptureUseCase: Symbol("ConsoleCaptureUseCase"),
+  PerformanceMonitorUseCase: Symbol("PerformanceMonitorUseCase"),
 } as const;

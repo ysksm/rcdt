@@ -5,6 +5,9 @@ import { registerNavigateRoutes } from "./controllers/navigate-controller.js";
 import { registerScriptRoutes } from "./controllers/script-controller.js";
 import { registerPerformanceRoutes } from "./controllers/performance-controller.js";
 import { registerDevToolsRoutes } from "./controllers/devtools-controller.js";
+import { registerConsoleRoutes } from "./controllers/console-controller.js";
+import { registerPerfMonitorRoutes } from "./controllers/perf-monitor-controller.js";
+import { registerWorkflowRoutes } from "./controllers/workflow-controller.js";
 import { resolve } from "path";
 import { existsSync } from "fs";
 
@@ -17,6 +20,9 @@ registerNavigateRoutes(router, container);
 registerScriptRoutes(router, container);
 registerPerformanceRoutes(router, container);
 registerDevToolsRoutes(router, container);
+registerConsoleRoutes(router, container);
+registerPerfMonitorRoutes(router, container);
+registerWorkflowRoutes(router, container);
 
 // Serve Angular static files from dist
 const frontendDist = resolve(import.meta.dir, "../../frontend/dist/frontend/browser");
