@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.angular/
+.bun/
+*.tsbuildinfo
+.env
+coverage/
+tmp/
