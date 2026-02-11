@@ -1,3 +1,5 @@
+import type { ChromeLaunchConfig } from "./chrome-launch-config.js";
+
 export interface SshTunnelConfig {
   readonly sshHost: string;
   readonly sshPort: number;
@@ -14,6 +16,7 @@ export class ConnectionConfig {
     public readonly port: number,
     public readonly secure: boolean = false,
     public readonly sshTunnel?: SshTunnelConfig,
+    public readonly chromeLaunch?: ChromeLaunchConfig,
   ) {}
 
   get effectiveHost(): string {
@@ -27,5 +30,19 @@ export class ConnectionConfig {
   get wsUrl(): string {
     const protocol = this.secure ? "wss" : "ws";
     return `${protocol}://${this.effectiveHost}:${this.effectivePort}`;
+  }
+
+  /**
+   * Returns the scenario description:
+   * - local-attach: Connect to locally running Chrome
+   * - local-launch: Launch Chrome locally and connect
+   * - remote-attach: SSH forward to remote running Chrome
+   * - remote-launch: SSH to remote, launch Chrome, forward and connect
+   */
+  get scenario(): "local-attach" | "local-launch" | "remote-attach" | "remote-launch" {
+    if (this.sshTunnel) {
+      return this.chromeLaunch ? "remote-launch" : "remote-attach";
+    }
+    return this.chromeLaunch ? "local-launch" : "local-attach";
   }
 }

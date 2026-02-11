@@ -3,13 +3,16 @@ import type { BrowserTab } from "../../domain/entities/browser-tab.js";
 import type { ConnectionConfig } from "../../domain/value-objects/connection-config.js";
 import type { IBrowserConnectionRepository } from "../../domain/repositories/browser-connection-repository.js";
 import type { ISshTunnelRepository } from "../../domain/repositories/ssh-tunnel-repository.js";
+import type { IChromeLauncherRepository } from "../../domain/repositories/chrome-launcher-repository.js";
 
 export class SessionManagementUseCase {
   private session: DebugSession | null = null;
+  private launchedChrome = false;
 
   constructor(
     private readonly browserRepo: IBrowserConnectionRepository,
     private readonly sshTunnelRepo: ISshTunnelRepository,
+    private readonly chromeLauncherRepo: IChromeLauncherRepository,
   ) {}
 
   async connect(config: ConnectionConfig): Promise<DebugSession> {
@@ -18,15 +21,11 @@ export class SessionManagementUseCase {
     this.session.connect();
 
     try {
-      // SSH tunnel setup if needed
-      if (config.sshTunnel) {
-        await this.sshTunnelRepo.open(config.sshTunnel);
-      }
+      await this.setupConnection(config);
 
       await this.browserRepo.connect(
         config.effectiveHost,
         config.effectivePort,
-        config.sshTunnel ? undefined : undefined,
       );
 
       this.session.connected();
@@ -44,9 +43,7 @@ export class SessionManagementUseCase {
     this.session.connect();
 
     try {
-      if (config.sshTunnel) {
-        await this.sshTunnelRepo.open(config.sshTunnel);
-      }
+      await this.setupConnection(config);
 
       await this.browserRepo.connect(config.effectiveHost, config.effectivePort, tabId);
       this.session.connected();
@@ -61,18 +58,85 @@ export class SessionManagementUseCase {
   async disconnect(): Promise<void> {
     await this.browserRepo.disconnect();
     await this.sshTunnelRepo.close();
+
+    // Stop Chrome if we launched it
+    if (this.launchedChrome) {
+      await this.chromeLauncherRepo.stop();
+      this.launchedChrome = false;
+    }
+
     this.session?.disconnect();
     this.session = null;
   }
 
   async listTabs(config: ConnectionConfig): Promise<BrowserTab[]> {
+    // Setup SSH tunnel if needed for tab listing
     if (config.sshTunnel && !this.sshTunnelRepo.isOpen()) {
       await this.sshTunnelRepo.open(config.sshTunnel);
     }
+
+    // Launch Chrome if needed for tab listing
+    if (config.chromeLaunch && !this.chromeLauncherRepo.isRunning()) {
+      await this.launchChrome(config);
+    }
+
     return this.browserRepo.listTabs(config.effectiveHost, config.effectivePort);
   }
 
   getSession(): DebugSession | null {
     return this.session;
+  }
+
+  /**
+   * Setup connection infrastructure based on scenario:
+   *
+   * 1. local-attach: No setup needed, just connect
+   * 2. local-launch: Launch Chrome locally, then connect
+   * 3. remote-attach: Open SSH tunnel, then connect
+   * 4. remote-launch: Launch Chrome on remote via SSH, open SSH tunnel, then connect
+   */
+  private async setupConnection(config: ConnectionConfig): Promise<void> {
+    const scenario = config.scenario;
+
+    switch (scenario) {
+      case "local-attach":
+        // Nothing extra to do
+        break;
+
+      case "local-launch":
+        await this.launchChrome(config);
+        break;
+
+      case "remote-attach":
+        await this.sshTunnelRepo.open(config.sshTunnel!);
+        break;
+
+      case "remote-launch":
+        // 1. Launch Chrome on remote machine via SSH
+        await this.launchChrome(config);
+        // 2. Open SSH tunnel to forward debug port
+        await this.sshTunnelRepo.open(config.sshTunnel!);
+        break;
+    }
+  }
+
+  private async launchChrome(config: ConnectionConfig): Promise<void> {
+    if (!config.chromeLaunch) return;
+
+    const debugPort = config.sshTunnel
+      ? config.sshTunnel.remotePort  // Remote: Chrome listens on remotePort
+      : config.port;                  // Local: Chrome listens on port
+
+    if (config.sshTunnel) {
+      await this.chromeLauncherRepo.launchRemote(
+        config.sshTunnel,
+        config.chromeLaunch,
+        debugPort,
+      );
+    } else {
+      await this.chromeLauncherRepo.launchLocal(config.chromeLaunch, debugPort);
+    }
+
+    this.launchedChrome = true;
   }
 }

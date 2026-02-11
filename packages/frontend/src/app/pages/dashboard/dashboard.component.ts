@@ -8,6 +8,7 @@ import {
   type ScriptResult,
   type PerformanceMetricsResponse,
   type SshTunnelConfig,
+  type ChromeLaunchConfig,
   type ConsoleLogEntry,
   type PerfMonitorSnapshot,
   type WorkflowResult,
@@ -36,6 +37,12 @@ export class DashboardComponent {
   remoteHost = signal('127.0.0.1');
   remotePort = signal(9222);
   localPort = signal(9223);
+
+  // Chrome Launch
+  launchChrome = signal(false);
+  chromePath = signal('');
+  headless = signal(false);
+  chromeUserDataDir = signal('');
 
   // Navigation
   navUrl = signal('');
@@ -108,10 +115,28 @@ export class DashboardComponent {
     };
   }
 
+  private getChromeLaunchConfig(): ChromeLaunchConfig | undefined {
+    if (!this.launchChrome()) return undefined;
+    return {
+      executablePath: this.chromePath() || undefined,
+      headless: this.headless(),
+      userDataDir: this.chromeUserDataDir() || undefined,
+    };
+  }
+
+  getScenarioLabel(): string {
+    const ssh = this.useSshTunnel();
+    const launch = this.launchChrome();
+    if (ssh && launch) return 'Remote + Launch';
+    if (ssh) return 'Remote + Attach';
+    if (launch) return 'Local + Launch';
+    return 'Local + Attach';
+  }
+
   listTabs(): void {
     this.loading.set(true);
     this.error.set('');
-    this.api.listTabs(this.host(), this.port(), this.getSshConfig()).subscribe({
+    this.api.listTabs(this.host(), this.port(), this.getSshConfig(), this.getChromeLaunchConfig()).subscribe({
       next: (tabs) => {
         this.tabs.set(tabs);
         this.loading.set(false);
@@ -132,6 +157,7 @@ export class DashboardComponent {
         port: this.port(),
         tabId,
         sshTunnel: this.getSshConfig(),
+        chromeLaunch: this.getChromeLaunchConfig(),
       })
       .subscribe({
         next: (session) => {

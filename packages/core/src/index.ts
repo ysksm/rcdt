@@ -6,6 +6,7 @@ export { BrowserTab } from "./domain/entities/browser-tab.js";
 // Domain - Value Objects
 export { ConnectionConfig } from "./domain/value-objects/connection-config.js";
 export type { SshTunnelConfig } from "./domain/value-objects/connection-config.js";
+export type { ChromeLaunchConfig } from "./domain/value-objects/chrome-launch-config.js";
 export { PerformanceMetrics } from "./domain/value-objects/performance-metrics.js";
 export type { TimingMetric, ResourceMetric } from "./domain/value-objects/performance-metrics.js";
 export { ScriptResult } from "./domain/value-objects/script-result.js";
@@ -18,6 +19,7 @@ export type { PerformanceSample } from "./domain/value-objects/performance-monit
 export type { IBrowserConnectionRepository, ConsoleEventCallback } from "./domain/repositories/browser-connection-repository.js";
 export type { ISshTunnelRepository } from "./domain/repositories/ssh-tunnel-repository.js";
 export type { IMetricsExportRepository, ExportFormat } from "./domain/repositories/metrics-export-repository.js";
+export type { IChromeLauncherRepository } from "./domain/repositories/chrome-launcher-repository.js";
 
 // Application - Use Cases
 export { SessionManagementUseCase } from "./application/use-cases/session-management-use-case.js";

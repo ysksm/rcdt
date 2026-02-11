@@ -12,11 +12,19 @@ export interface SshTunnelConfig {
   localPort: number;
 }
 
+export interface ChromeLaunchConfig {
+  executablePath?: string;
+  headless?: boolean;
+  userDataDir?: string;
+  additionalFlags?: string[];
+}
+
 export interface ConnectRequest {
   host: string;
   port: number;
   tabId?: string;
   sshTunnel?: SshTunnelConfig;
+  chromeLaunch?: ChromeLaunchConfig;
 }
 
 export interface SessionInfo {
@@ -28,6 +36,7 @@ export interface SessionInfo {
     port: number;
     hasSshTunnel: boolean;
   };
+  scenario?: string;
   error?: string;
 }
 
@@ -123,8 +132,8 @@ export class ApiService {
     return this.http.get<SessionInfo>(`${this.baseUrl}/session`);
   }
 
-  listTabs(host: string, port: number, sshTunnel?: SshTunnelConfig): Observable<BrowserTab[]> {
-    return this.http.post<BrowserTab[]>(`${this.baseUrl}/tabs`, { host, port, sshTunnel });
+  listTabs(host: string, port: number, sshTunnel?: SshTunnelConfig, chromeLaunch?: ChromeLaunchConfig): Observable<BrowserTab[]> {
+    return this.http.post<BrowserTab[]>(`${this.baseUrl}/tabs`, { host, port, sshTunnel, chromeLaunch });
   }
 
   // Navigation

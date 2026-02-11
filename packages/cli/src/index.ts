@@ -13,7 +13,7 @@ import {
   type ExportFormat,
   type IBrowserConnectionRepository,
 } from "@rcdt/core";
-import type { SshTunnelConfig } from "@rcdt/core";
+import type { SshTunnelConfig, ChromeLaunchConfig } from "@rcdt/core";
 
 const container = createContainer();
 
@@ -31,6 +31,16 @@ rcdt - Chrome Remote Debug Tool
 
 Usage:
   rcdt <command> [options]
+
+Scenarios:
+  1. Local + Attach    : Connect to already running Chrome
+     rcdt connect --port 9222
+  2. Local + Launch    : Launch Chrome and connect
+     rcdt connect --launch --port 9222
+  3. Remote + Attach   : SSH forward to running Chrome on remote
+     rcdt connect --ssh-host server --ssh-user user
+  4. Remote + Launch   : SSH to remote, launch Chrome, forward and connect
+     rcdt connect --ssh-host server --ssh-user user --launch
 
 Commands:
   tabs                          List browser tabs
@@ -58,6 +68,12 @@ Connection Options:
   --host <host>                 Chrome host (default: 127.0.0.1)
   --port <port>                 Chrome debug port (default: 9222)
   --tab-id <id>                 Target tab ID for connection
+
+Chrome Launch Options (--launch):
+  --launch                      Launch Chrome in remote-debugging mode
+  --chrome-path <path>          Chrome executable path (auto-detected)
+  --headless                    Launch Chrome in headless mode
+  --user-data-dir <path>        Chrome user data directory
 
 SSH Tunnel Options:
   --ssh-host <host>             SSH server host
@@ -115,10 +131,45 @@ function buildConnectionConfig(opts: Record<string, string>): ConnectionConfig {
     };
   }
 
-  return new ConnectionConfig(host, port, false, sshTunnel);
+  let chromeLaunch: ChromeLaunchConfig | undefined;
+  if (opts["launch"]) {
+    chromeLaunch = {
+      executablePath: opts["chrome-path"],
+      headless: !!opts["headless"],
+      userDataDir: opts["user-data-dir"],
+    };
+  }
+
+  return new ConnectionConfig(host, port, false, sshTunnel, chromeLaunch);
+}
+
+function printScenario(config: ConnectionConfig): void {
+  const scenario = config.scenario;
+  switch (scenario) {
+    case "local-attach":
+      console.log(`Scenario: Local + Attach (${config.host}:${config.port})`);
+      break;
+    case "local-launch":
+      console.log(`Scenario: Local + Launch Chrome (port ${config.port})`);
+      if (config.chromeLaunch?.headless) console.log("  Mode: headless");
+      break;
+    case "remote-attach":
+      console.log(`Scenario: Remote + Attach via SSH`);
+      console.log(`  SSH: ${config.sshTunnel!.sshUser}@${config.sshTunnel!.sshHost}:${config.sshTunnel!.sshPort}`);
+      console.log(`  Forward: localhost:${config.sshTunnel!.localPort} -> ${config.sshTunnel!.remoteHost}:${config.sshTunnel!.remotePort}`);
+      break;
+    case "remote-launch":
+      console.log(`Scenario: Remote + Launch Chrome via SSH`);
+      console.log(`  SSH: ${config.sshTunnel!.sshUser}@${config.sshTunnel!.sshHost}:${config.sshTunnel!.sshPort}`);
+      console.log(`  Remote Chrome port: ${config.sshTunnel!.remotePort}`);
+      console.log(`  Forward: localhost:${config.sshTunnel!.localPort} -> ${config.sshTunnel!.remoteHost}:${config.sshTunnel!.remotePort}`);
+      if (config.chromeLaunch?.headless) console.log("  Mode: headless");
+      break;
+  }
 }
 
 async function runInteractive(config: ConnectionConfig): Promise<void> {
+  printScenario(config);
   console.log("Connecting...");
   const session = await sessionUC.connect(config);
   console.log(`Connected! Session: ${session.id}`);
@@ -355,9 +406,7 @@ async function main(): Promise<void> {
   try {
     switch (command) {
       case "tabs": {
-        if (config.sshTunnel) {
-          console.log("Setting up SSH tunnel...");
-        }
+        printScenario(config);
         const tabs = await sessionUC.listTabs(config);
         console.log(`Found ${tabs.length} tab(s):\n`);
         tabs.forEach((tab, i) => {
@@ -372,13 +421,11 @@ async function main(): Promise<void> {
 
       case "connect": {
         const tabId = opts["tab-id"];
-        console.log(`Connecting to ${config.host}:${config.port}...`);
-        if (config.sshTunnel) {
-          console.log(`Via SSH tunnel: ${config.sshTunnel.sshUser}@${config.sshTunnel.sshHost}`);
-        }
+        printScenario(config);
         if (tabId) {
           console.log(`Target tab: ${tabId}`);
         }
+        console.log("Connecting...");
         const session = tabId
           ? await sessionUC.connectToTab(config, tabId)
           : await sessionUC.connect(config);

@@ -2,6 +2,7 @@ import { DIContainer, TOKENS } from "../di/container.js";
 import { ChromeConnectionRepository } from "./repositories/chrome-connection-repository.js";
 import { SshTunnelRepository } from "./repositories/ssh-tunnel-repository.js";
 import { MetricsExportRepository } from "./repositories/metrics-export-repository.js";
+import { ChromeLauncherRepository } from "./repositories/chrome-launcher-repository.js";
 import { SessionManagementUseCase } from "../application/use-cases/session-management-use-case.js";
 import { NavigateUseCase } from "../application/use-cases/navigate-use-case.js";
 import { ExecuteScriptUseCase } from "../application/use-cases/execute-script-use-case.js";
@@ -20,13 +21,15 @@ export function createContainer(): DIContainer {
   const browserRepo = new ChromeConnectionRepository();
   const sshTunnelRepo = new SshTunnelRepository();
   const metricsExportRepo = new MetricsExportRepository();
+  const chromeLauncherRepo = new ChromeLauncherRepository();
 
   container.register(TOKENS.BrowserConnectionRepository, browserRepo);
   container.register(TOKENS.SshTunnelRepository, sshTunnelRepo);
   container.register(TOKENS.MetricsExportRepository, metricsExportRepo);
+  container.register(TOKENS.ChromeLauncherRepository, chromeLauncherRepo);
 
   // Application (Use Cases)
-  container.register(TOKENS.SessionManagementUseCase, new SessionManagementUseCase(browserRepo, sshTunnelRepo));
+  container.register(TOKENS.SessionManagementUseCase, new SessionManagementUseCase(browserRepo, sshTunnelRepo, chromeLauncherRepo));
   container.register(TOKENS.NavigateUseCase, new NavigateUseCase(browserRepo));
   container.register(TOKENS.ExecuteScriptUseCase, new ExecuteScriptUseCase(browserRepo));
   container.register(TOKENS.MeasurePerformanceUseCase, new MeasurePerformanceUseCase(browserRepo, metricsExportRepo));

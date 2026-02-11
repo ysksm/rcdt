@@ -26,6 +26,7 @@ export const TOKENS = {
   BrowserConnectionRepository: Symbol("IBrowserConnectionRepository"),
   SshTunnelRepository: Symbol("ISshTunnelRepository"),
   MetricsExportRepository: Symbol("IMetricsExportRepository"),
+  ChromeLauncherRepository: Symbol("IChromeLauncherRepository"),
   // Use cases
   NavigateUseCase: Symbol("NavigateUseCase"),
   ExecuteScriptUseCase: Symbol("ExecuteScriptUseCase"),

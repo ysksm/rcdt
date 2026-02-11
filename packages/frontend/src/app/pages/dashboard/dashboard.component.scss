@@ -106,6 +106,39 @@
   }
 }
 
+.chrome-launch-config {
+  margin-top: 16px;
+  padding: 16px;
+  background: #15152a;
+  border-radius: 6px;
+  border: 1px solid #2a2a3e;
+
+  h3 {
+    margin: 0 0 12px 0;
+    font-size: 13px;
+    color: #44bbff;
+  }
+}
+
+.scenario-badge {
+  margin-top: 8px;
+  display: inline-block;
+  padding: 4px 10px;
+  background: #1a1a30;
+  border: 1px solid #444;
+  border-radius: 12px;
+  font-size: 12px;
+  color: #aaa;
+}
+
+.scenario-tag {
+  padding: 2px 8px;
+  background: #1a1a30;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #88aaff;
+}
+
 // Buttons
 .button-group {
   display: flex;

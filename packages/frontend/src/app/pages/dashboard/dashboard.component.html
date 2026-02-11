@@ -21,11 +21,42 @@
       </div>
       <div class="form-row checkbox-row">
         <label>
-          <input type="checkbox" [ngModel]="useSshTunnel()" (ngModelChange)="useSshTunnel.set($event)" />
-          SSH Tunnel
+          <input type="checkbox" [ngModel]="launchChrome()" (ngModelChange)="launchChrome.set($event)" />
+          Launch Chrome
         </label>
       </div>
+      <div class="form-row checkbox-row">
+        <label>
+          <input type="checkbox" [ngModel]="useSshTunnel()" (ngModelChange)="useSshTunnel.set($event)" />
+          SSH Tunnel (Remote)
+        </label>
+      </div>
+      <div class="scenario-badge">{{ getScenarioLabel() }}</div>
     </div>
+
+    @if (launchChrome()) {
+      <div class="chrome-launch-config">
+        <h3>Chrome Launch Options</h3>
+        <div class="form-grid">
+          <div class="form-row">
+            <label>Chrome Path (auto-detect if empty)</label>
+            <input type="text" [ngModel]="chromePath()" (ngModelChange)="chromePath.set($event)"
+              placeholder="google-chrome" />
+          </div>
+          <div class="form-row checkbox-row">
+            <label>
+              <input type="checkbox" [ngModel]="headless()" (ngModelChange)="headless.set($event)" />
+              Headless Mode
+            </label>
+          </div>
+          <div class="form-row">
+            <label>User Data Dir (optional)</label>
+            <input type="text" [ngModel]="chromeUserDataDir()" (ngModelChange)="chromeUserDataDir.set($event)"
+              placeholder="/tmp/rcdt-chrome" />
+          </div>
+        </div>
+      </div>
+    }
 
     @if (useSshTunnel()) {
       <div class="ssh-config">
@@ -75,6 +106,9 @@
       <div class="session-info">
         <span class="status-badge" [class]="'status-' + s.status">{{ s.status }}</span>
         <span>Session: {{ s.id }}</span>
+        @if (s.scenario) {
+          <span class="scenario-tag">{{ s.scenario }}</span>
+        }
       </div>
     }
   </section>
