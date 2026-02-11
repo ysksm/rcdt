@@ -22,4 +22,18 @@ export function registerPerfMonitorRoutes(router: Router, container: DIContainer
     }
     return Response.json(snapshot.toJSON());
   });
+
+  router.post("/api/perf-monitor/export", async (req) => {
+    const { outputPath } = (await req.json()) as { outputPath: string };
+    if (!outputPath) {
+      return Response.json({ error: "outputPath is required" }, { status: 400 });
+    }
+    const snapshot = perfMonitorUC.getSnapshot();
+    if (!snapshot) {
+      return Response.json({ error: "No monitoring data available" }, { status: 400 });
+    }
+    const data = JSON.stringify(snapshot.toJSON(), null, 2);
+    await Bun.write(outputPath, data);
+    return Response.json({ filePath: outputPath, sampleCount: snapshot.samples.length });
+  });
 }

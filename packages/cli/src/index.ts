@@ -11,6 +11,7 @@ import {
   type ConsoleCaptureUseCase,
   type PerformanceMonitorUseCase,
   type ExportFormat,
+  type IBrowserConnectionRepository,
 } from "@rcdt/core";
 import type { SshTunnelConfig } from "@rcdt/core";
 
@@ -33,20 +34,30 @@ Usage:
 
 Commands:
   tabs                          List browser tabs
-  connect                       Connect to browser
+  connect [--tab-id <id>]       Connect to browser (optionally to specific tab)
   navigate <url>                Navigate to URL
   eval <expression>             Execute JavaScript
   perf [--format json|csv|html] [--output <path>]  Measure performance
-  screenshot [--output <path>]  Capture screenshot
+  screenshot [--output <path>] [--format png|jpeg|webp]  Capture screenshot
   content [--output <path>]     Get page HTML content
-  console                       Capture console logs (Ctrl+C to stop)
-  perf-monitor [--interval ms] [--duration sec]  Performance monitor
+  console [--output <path>]     Capture console logs (Ctrl+C to stop)
+  perf-monitor [--interval ms] [--duration sec] [--output <path>]  Performance monitor
   devtools <method> [params]    Send raw DevTools command
+  enable-domain <domain>        Enable a DevTools protocol domain
+  workflow <url> [options]       Automated performance workflow
   interactive                   Interactive REPL mode
+
+Workflow Options:
+  --format json|csv|html        Export format (default: html)
+  --output <path>               Output file path
+  --wait <seconds>              Wait time for page stabilization (default: 2)
+  --interval <ms>               Monitor sampling interval (default: 500)
+  --script <expression>         JavaScript to execute after navigation
 
 Connection Options:
   --host <host>                 Chrome host (default: 127.0.0.1)
   --port <port>                 Chrome debug port (default: 9222)
+  --tab-id <id>                 Target tab ID for connection
 
 SSH Tunnel Options:
   --ssh-host <host>             SSH server host
@@ -123,21 +134,23 @@ async function runInteractive(config: ConnectionConfig): Promise<void> {
     try {
       switch (cmd) {
         case "help":
-          console.log("  nav <url>     - Navigate to URL");
-          console.log("  eval <expr>   - Execute JavaScript");
-          console.log("  perf          - Measure performance");
-          console.log("  screenshot    - Capture screenshot");
-          console.log("  tabs          - List tabs");
-          console.log("  console start - Start console capture");
-          console.log("  console stop  - Stop and show console logs");
-          console.log("  console show  - Show captured logs");
-          console.log("  console clear - Clear logs");
-          console.log("  monitor start - Start perf monitor");
-          console.log("  monitor stop  - Stop and show snapshot");
-          console.log("  monitor show  - Show current snapshot");
-          console.log("  workflow <url> [format] - Record perf, navigate, stop, export");
-          console.log("  devtools <m>  - Send DevTools command");
-          console.log("  exit          - Disconnect and exit");
+          console.log("  nav <url>           - Navigate to URL");
+          console.log("  eval <expr>         - Execute JavaScript");
+          console.log("  perf                - Measure performance");
+          console.log("  screenshot [format] - Capture screenshot (png|jpeg|webp)");
+          console.log("  content             - Get page HTML content");
+          console.log("  tabs                - List tabs");
+          console.log("  console start       - Start console capture");
+          console.log("  console stop        - Stop and show console logs");
+          console.log("  console show        - Show captured logs");
+          console.log("  console clear       - Clear logs");
+          console.log("  monitor start [ms]  - Start perf monitor");
+          console.log("  monitor stop        - Stop and show snapshot");
+          console.log("  monitor show        - Show current snapshot");
+          console.log("  workflow <url> [fmt] [wait] [interval] - Full performance workflow");
+          console.log("  devtools <method>   - Send DevTools command");
+          console.log("  enable <domain>     - Enable DevTools domain");
+          console.log("  exit                - Disconnect and exit");
           break;
 
         case "nav":
@@ -174,16 +187,41 @@ async function runInteractive(config: ConnectionConfig): Promise<void> {
         }
 
         case "screenshot": {
-          const buf = await devtoolsUC.captureScreenshot();
-          const path = `screenshot-${Date.now()}.png`;
+          const fmt = (parts[1] || "png") as "png" | "jpeg" | "webp";
+          const ext = fmt === "jpeg" ? "jpg" : fmt;
+          const buf = await devtoolsUC.captureScreenshot(fmt);
+          const path = `screenshot-${Date.now()}.${ext}`;
           await Bun.write(path, buf);
           console.log(`Screenshot saved: ${path}`);
           break;
         }
 
+        case "content": {
+          const html = await devtoolsUC.getPageContent();
+          const outputFile = parts[1];
+          if (outputFile) {
+            await Bun.write(outputFile, html);
+            console.log(`Page content saved: ${outputFile}`);
+          } else {
+            console.log(html);
+          }
+          break;
+        }
+
         case "tabs": {
           const tabs = await sessionUC.listTabs(config);
-          tabs.forEach((t, i) => console.log(`  [${i}] ${t.title} - ${t.url}`));
+          tabs.forEach((t, i) => console.log(`  [${i}] ${t.title} - ${t.url} (${t.id})`));
+          break;
+        }
+
+        case "enable": {
+          const domain = parts[1];
+          if (!domain) {
+            console.log("Usage: enable <domain> (e.g. enable DOM)");
+            break;
+          }
+          await devtoolsUC.enableDomain(domain);
+          console.log(`Domain "${domain}" enabled.`);
           break;
         }
 
@@ -237,24 +275,33 @@ async function runInteractive(config: ConnectionConfig): Promise<void> {
         case "workflow": {
           const url = parts[1];
           const format = (parts[2] || "html") as "json" | "csv" | "html";
+          const waitSec = parts[3] ? parseInt(parts[3], 10) : 2;
+          const intervalMs = parts[4] ? parseInt(parts[4], 10) : 500;
           if (!url) {
-            console.log("Usage: workflow <url> [json|csv|html]");
+            console.log("Usage: workflow <url> [format] [waitSec] [intervalMs]");
             break;
           }
-          console.log("1. Starting performance monitor...");
-          await perfMonitorUC.start(500);
+          console.log("1. Starting performance monitor & console capture...");
+          await perfMonitorUC.start(intervalMs);
+          await consoleUC.start();
+
           console.log(`2. Navigating to: ${url}`);
           await navigateUC.execute(url);
-          console.log("3. Collecting performance metrics...");
-          await new Promise((r) => setTimeout(r, 2000));
+
+          console.log(`3. Waiting ${waitSec}s for stabilization...`);
+          await new Promise((r) => setTimeout(r, waitSec * 1000));
+
           const snapshot = await perfMonitorUC.stop();
+          const consoleLogs = await consoleUC.stop();
           const metrics = await measureUC.measure();
           const outPath = `./perf-report-${Date.now()}.${format}`;
           const { filePath } = await measureUC.measureAndExport(format, outPath);
-          console.log(`4. Performance report exported: ${filePath}`);
+
+          console.log(`4. Report exported: ${filePath}`);
           console.log(`   Monitor samples: ${snapshot.samples.length}`);
           console.log(`   JS Heap: ${(metrics.jsHeapUsedSize / 1048576).toFixed(2)} MB`);
           console.log(`   DOM Nodes: ${metrics.domNodes}`);
+          console.log(`   Console logs: ${consoleLogs.length}`);
           if (format === "html") {
             console.log(`5. Open in Chrome: file://${filePath}`);
           }
@@ -324,11 +371,17 @@ async function main(): Promise<void> {
       }
 
       case "connect": {
+        const tabId = opts["tab-id"];
         console.log(`Connecting to ${config.host}:${config.port}...`);
         if (config.sshTunnel) {
           console.log(`Via SSH tunnel: ${config.sshTunnel.sshUser}@${config.sshTunnel.sshHost}`);
         }
-        const session = await sessionUC.connect(config);
+        if (tabId) {
+          console.log(`Target tab: ${tabId}`);
+        }
+        const session = tabId
+          ? await sessionUC.connectToTab(config, tabId)
+          : await sessionUC.connect(config);
         console.log(`Connected! Session ID: ${session.id}`);
         break;
       }
@@ -386,11 +439,13 @@ async function main(): Promise<void> {
       }
 
       case "screenshot": {
-        const output = opts["output"] || `screenshot-${Date.now()}.png`;
+        const format = (opts["format"] || "png") as "png" | "jpeg" | "webp";
+        const ext = format === "jpeg" ? "jpg" : format;
+        const output = opts["output"] || `screenshot-${Date.now()}.${ext}`;
         await sessionUC.connect(config);
-        const buf = await devtoolsUC.captureScreenshot();
+        const buf = await devtoolsUC.captureScreenshot(format);
         await Bun.write(output, buf);
-        console.log(`Screenshot saved: ${output}`);
+        console.log(`Screenshot saved: ${output} (${format})`);
         await sessionUC.disconnect();
         break;
       }
@@ -405,6 +460,19 @@ async function main(): Promise<void> {
         } else {
           console.log(html);
         }
+        await sessionUC.disconnect();
+        break;
+      }
+
+      case "enable-domain": {
+        const domain = opts["_1"];
+        if (!domain) {
+          console.error("Error: Domain is required. Usage: rcdt enable-domain <domain>");
+          process.exit(1);
+        }
+        await sessionUC.connect(config);
+        await devtoolsUC.enableDomain(domain);
+        console.log(`Domain "${domain}" enabled.`);
         await sessionUC.disconnect();
         break;
       }
@@ -475,30 +543,41 @@ async function main(): Promise<void> {
         const format = (opts["format"] || "html") as ExportFormat;
         const output = opts["output"] || `./perf-report-${Date.now()}.${format}`;
         const wait = parseInt(opts["wait"] || "2", 10);
+        const intervalMs = parseInt(opts["interval"] || "500", 10);
+        const script = opts["script"];
 
-        if (!url) {
-          console.error("Error: URL is required. Usage: rcdt workflow <url> [--format html|json|csv] [--output path] [--wait seconds]");
+        if (!url && !script) {
+          console.error("Error: URL or --script is required. Usage: rcdt workflow <url> [--format html|json|csv] [--output path] [--wait seconds] [--interval ms] [--script expr]");
           process.exit(1);
         }
 
         await sessionUC.connect(config);
 
-        console.log("1. Starting performance monitor...");
-        await perfMonitorUC.start(500);
+        console.log("1. Starting performance monitor & console capture...");
+        await perfMonitorUC.start(intervalMs);
         await consoleUC.start();
 
-        console.log(`2. Navigating to: ${url}`);
-        await navigateUC.execute(url);
+        if (url) {
+          console.log(`2. Navigating to: ${url}`);
+          await navigateUC.execute(url);
+        }
 
-        console.log(`3. Waiting ${wait}s for page to stabilize...`);
+        if (script) {
+          console.log(`${url ? "3" : "2"}. Executing script...`);
+          const browserRepo = container.resolve<IBrowserConnectionRepository>(TOKENS.BrowserConnectionRepository);
+          await browserRepo.evaluateScript(script);
+        }
+
+        const stepNum = (url ? 2 : 1) + (script ? 1 : 0) + 1;
+        console.log(`${stepNum}. Waiting ${wait}s for page to stabilize...`);
         await new Promise((r) => setTimeout(r, wait * 1000));
 
-        console.log("4. Stopping monitor and collecting metrics...");
+        console.log(`${stepNum + 1}. Stopping monitor and collecting metrics...`);
         const snapshot = await perfMonitorUC.stop();
         const consoleLogs = await consoleUC.stop();
         const { metrics, filePath } = await measureUC.measureAndExport(format, output);
 
-        console.log(`5. Report exported: ${filePath}`);
+        console.log(`${stepNum + 2}. Report exported: ${filePath}`);
         console.log(`\nResults:`);
         console.log(`  Monitor samples: ${snapshot.samples.length}`);
         console.log(`  JS Heap: ${(metrics.jsHeapUsedSize / 1048576).toFixed(2)} MB`);

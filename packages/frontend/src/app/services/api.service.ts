@@ -167,6 +167,10 @@ export class ApiService {
     return `${this.baseUrl}/devtools/screenshot?format=${format}`;
   }
 
+  getPageContent(): Observable<string> {
+    return this.http.get(`${this.baseUrl}/devtools/content`, { responseType: 'text' });
+  }
+
   // Console
   startConsoleCapture(): Observable<{ status: string }> {
     return this.http.post<{ status: string }>(`${this.baseUrl}/console/start`, {});
@@ -184,6 +188,10 @@ export class ApiService {
     return this.http.post<{ status: string }>(`${this.baseUrl}/console/clear`, {});
   }
 
+  exportConsoleLogs(outputPath: string): Observable<{ filePath: string; count: number }> {
+    return this.http.post<{ filePath: string; count: number }>(`${this.baseUrl}/console/export`, { outputPath });
+  }
+
   // Performance Monitor
   startPerfMonitor(intervalMs: number = 1000): Observable<{ status: string }> {
     return this.http.post<{ status: string }>(`${this.baseUrl}/perf-monitor/start`, { intervalMs });
@@ -195,6 +203,10 @@ export class ApiService {
 
   getPerfMonitorSnapshot(): Observable<PerfMonitorSnapshot> {
     return this.http.get<PerfMonitorSnapshot>(`${this.baseUrl}/perf-monitor/snapshot`);
+  }
+
+  exportPerfMonitor(outputPath: string): Observable<{ filePath: string; sampleCount: number }> {
+    return this.http.post<{ filePath: string; sampleCount: number }>(`${this.baseUrl}/perf-monitor/export`, { outputPath });
   }
 
   // Workflow

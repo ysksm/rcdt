@@ -470,6 +470,14 @@ table {
   }
 }
 
+.page-content-pre {
+  max-height: 500px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-size: 11px;
+}
+
 // Console Logs
 .console-log-container {
   margin-top: 12px;

@@ -107,6 +107,7 @@
         <button class="tool-tab" [class.active]="activeTab() === 'performance'" (click)="activeTab.set('performance')">Performance</button>
         <button class="tool-tab" [class.active]="activeTab() === 'devtools'" (click)="activeTab.set('devtools')">DevTools</button>
         <button class="tool-tab" [class.active]="activeTab() === 'screenshot'" (click)="activeTab.set('screenshot')">Screenshot</button>
+        <button class="tool-tab" [class.active]="activeTab() === 'content'" (click)="activeTab.set('content')">Content</button>
         <button class="tool-tab" [class.active]="activeTab() === 'console'" (click)="activeTab.set('console')">Console</button>
         <button class="tool-tab" [class.active]="activeTab() === 'monitor'" (click)="activeTab.set('monitor')">Monitor</button>
         <button class="tool-tab" [class.active]="activeTab() === 'workflow'" (click)="activeTab.set('workflow')">Workflow</button>
@@ -239,6 +240,14 @@
                 rows="3" placeholder="{}"></textarea>
             </div>
             <button class="btn btn-primary" (click)="sendDevToolsCommand()" [disabled]="loading()">Send</button>
+
+            <h4>Enable Domain</h4>
+            <div class="input-action">
+              <input type="text" [ngModel]="enableDomainName()" (ngModelChange)="enableDomainName.set($event)"
+                placeholder="DOM, CSS, Accessibility..." />
+              <button class="btn btn-secondary" (click)="enableDomain()" [disabled]="loading()">Enable</button>
+            </div>
+
             @if (devtoolsResult(); as r) {
               <div class="result-box">
                 <pre>{{ formatJson(r) }}</pre>
@@ -251,7 +260,14 @@
         @if (activeTab() === 'screenshot') {
           <div class="tool-section">
             <h3>Screenshot</h3>
-            <button class="btn btn-primary" (click)="captureScreenshot()" [disabled]="loading()">Capture</button>
+            <div class="input-action">
+              <select [ngModel]="screenshotFormat()" (ngModelChange)="screenshotFormat.set($event)">
+                <option value="png">PNG</option>
+                <option value="jpeg">JPEG</option>
+                <option value="webp">WebP</option>
+              </select>
+              <button class="btn btn-primary" (click)="captureScreenshot()" [disabled]="loading()">Capture</button>
+            </div>
             @if (screenshotUrl()) {
               <div class="screenshot-container">
                 <img [src]="screenshotUrl()" alt="Screenshot" />
@@ -259,6 +275,19 @@
             }
           </div>
         }
+        <!-- Page Content -->
+        @if (activeTab() === 'content') {
+          <div class="tool-section">
+            <h3>Page Content (HTML)</h3>
+            <button class="btn btn-primary" (click)="fetchPageContent()" [disabled]="loading()">Fetch Content</button>
+            @if (pageContent()) {
+              <div class="result-box">
+                <pre class="page-content-pre">{{ pageContent() }}</pre>
+              </div>
+            }
+          </div>
+        }
+
         <!-- Console -->
         @if (activeTab() === 'console') {
           <div class="tool-section">
@@ -271,6 +300,11 @@
                 <button class="btn btn-secondary" (click)="refreshConsoleLogs()">Refresh</button>
               }
               <button class="btn btn-secondary" (click)="clearConsoleLogs()">Clear</button>
+            </div>
+            <div class="export-row">
+              <input type="text" [ngModel]="consoleExportPath()" (ngModelChange)="consoleExportPath.set($event)"
+                placeholder="Export path" />
+              <button class="btn btn-secondary" (click)="exportConsoleLogs()" [disabled]="consoleLogs().length === 0">Export</button>
             </div>
             @if (consoleCapturing()) {
               <div class="capture-indicator">Capturing...</div>
@@ -306,6 +340,11 @@
               } @else {
                 <button class="btn btn-danger" (click)="stopPerfMonitor()">Stop Monitor</button>
               }
+            </div>
+            <div class="export-row">
+              <input type="text" [ngModel]="perfMonitorExportPath()" (ngModelChange)="perfMonitorExportPath.set($event)"
+                placeholder="Export path" />
+              <button class="btn btn-secondary" (click)="exportPerfMonitor()" [disabled]="!perfMonitorData()">Export</button>
             </div>
             @if (perfMonitoring()) {
               <div class="capture-indicator">Monitoring...</div>

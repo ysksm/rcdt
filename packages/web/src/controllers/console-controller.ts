@@ -23,4 +23,15 @@ export function registerConsoleRoutes(router: Router, container: DIContainer): v
     consoleUC.clear();
     return Response.json({ status: "cleared" });
   });
+
+  router.post("/api/console/export", async (req) => {
+    const { outputPath } = (await req.json()) as { outputPath: string };
+    if (!outputPath) {
+      return Response.json({ error: "outputPath is required" }, { status: 400 });
+    }
+    const logs = consoleUC.getLogs();
+    const data = JSON.stringify(logs.map((l) => l.toJSON()), null, 2);
+    await Bun.write(outputPath, data);
+    return Response.json({ filePath: outputPath, count: logs.length });
+  });
 }

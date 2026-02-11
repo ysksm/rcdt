@@ -53,6 +53,10 @@ export class DashboardComponent {
   devtoolsMethod = signal('');
   devtoolsParams = signal('{}');
   devtoolsResult = signal<unknown>(null);
+  enableDomainName = signal('');
+
+  // Page Content
+  pageContent = signal('');
 
   // Console
   consoleLogs = signal<ConsoleLogEntry[]>([]);
@@ -72,11 +76,20 @@ export class DashboardComponent {
   workflowWaitMs = signal(2000);
   workflowResult = signal<WorkflowResult | null>(null);
 
+  // Screenshot
+  screenshotFormat = signal<'png' | 'jpeg' | 'webp'>('png');
+
+  // Console export
+  consoleExportPath = signal('./console-logs.json');
+
+  // Perf monitor export
+  perfMonitorExportPath = signal('./perf-monitor.json');
+
   // UI state
   loading = signal(false);
   error = signal('');
   activeTab = signal<
-    'navigate' | 'script' | 'performance' | 'devtools' | 'screenshot' | 'console' | 'monitor' | 'workflow'
+    'navigate' | 'script' | 'performance' | 'devtools' | 'screenshot' | 'console' | 'monitor' | 'workflow' | 'content'
   >('navigate');
   screenshotUrl = signal('');
 
@@ -236,7 +249,38 @@ export class DashboardComponent {
   }
 
   captureScreenshot(): void {
-    this.screenshotUrl.set(this.api.getScreenshotUrl('png') + '&t=' + Date.now());
+    this.screenshotUrl.set(this.api.getScreenshotUrl(this.screenshotFormat()) + '&t=' + Date.now());
+  }
+
+  enableDomain(): void {
+    if (!this.enableDomainName()) return;
+    this.loading.set(true);
+    this.error.set('');
+    this.api.enableDomain(this.enableDomainName()).subscribe({
+      next: () => {
+        this.devtoolsResult.set({ status: `Domain "${this.enableDomainName()}" enabled` });
+        this.loading.set(false);
+      },
+      error: (err) => {
+        this.error.set(err.error?.error || err.message);
+        this.loading.set(false);
+      },
+    });
+  }
+
+  fetchPageContent(): void {
+    this.loading.set(true);
+    this.error.set('');
+    this.api.getPageContent().subscribe({
+      next: (html) => {
+        this.pageContent.set(html);
+        this.loading.set(false);
+      },
+      error: (err) => {
+        this.error.set(err.error?.error || err.message);
+        this.loading.set(false);
+      },
+    });
   }
 
   formatBytes(bytes: number): string {
@@ -282,6 +326,13 @@ export class DashboardComponent {
     });
   }
 
+  exportConsoleLogs(): void {
+    this.api.exportConsoleLogs(this.consoleExportPath()).subscribe({
+      next: (result) => alert(`Exported ${result.count} logs to: ${result.filePath}`),
+      error: (err) => this.error.set(err.error?.error || err.message),
+    });
+  }
+
   // Performance Monitor
   startPerfMonitor(): void {
     this.api.startPerfMonitor(this.perfMonitorInterval()).subscribe({
@@ -302,6 +353,13 @@ export class DashboardComponent {
     if (this.perfPollTimer) { clearInterval(this.perfPollTimer); this.perfPollTimer = null; }
     this.api.stopPerfMonitor().subscribe({
       next: (snapshot) => { this.perfMonitorData.set(snapshot); this.perfMonitoring.set(false); },
+      error: (err) => this.error.set(err.error?.error || err.message),
+    });
+  }
+
+  exportPerfMonitor(): void {
+    this.api.exportPerfMonitor(this.perfMonitorExportPath()).subscribe({
+      next: (result) => alert(`Exported ${result.sampleCount} samples to: ${result.filePath}`),
       error: (err) => this.error.set(err.error?.error || err.message),
     });
   }
